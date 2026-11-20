@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#173f34">
+<title>SägWerk – Schnittplanung</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="solver.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header><div class="header"><span class="mark" aria-hidden="true">SW</span><strong>SägWerk</strong></div></header>
+<main>
+<div class="intro"><h1>Schnitteinteilung</h1><p>Plane den Einschnitt eines Stammes aus deinen gewünschten Holzmaßen.</p></div>
+<form id="plan-form">
+<section class="card">
+<h2>Stamm</h2>
+<div class="fields">
+<label>Zopfdurchmesser <span>cm</span><input id="diameter" inputmode="decimal" value="28" required></label>
+<label>Mitteldurchmesser <span>cm</span><input id="middle" inputmode="decimal" value="32" required></label>
+<label>Stammlänge <span>m</span><input id="length" inputmode="decimal" value="4" required></label>
+<label>Schnittfuge <span>mm</span><input id="kerf" inputmode="numeric" value="2" required></label>
+</div>
+<p class="hint">Durchmesser ohne Rinde eingeben.</p>
+<details><summary>Trocknungsschwund</summary>
+<div class="fields">
+<label>Produktmaße gelten
+<select id="size-mode"><option value="green">Beim Einschnitt</option><option value="dry">Nach dem Trocknen</option></select>
+</label>
+<label>Schwund je Maß <span>%</span><input id="shrinkage" inputmode="decimal" value="5" disabled></label>
+</div>
+<p class="hint">SägWerk rechnet die Zugabe auf Breite und Stärke und rundet das Sägeschnittmaß auf ganze Millimeter auf. Die Länge bleibt gleich.</p>
+</details>
+<details><summary>Randzugabe</summary><label>Zugabe je Seite <span>mm</span><input id="reserve" inputmode="numeric" value="0" required></label><p class="hint">Wird auf beiden Seiten vom Zopfdurchmesser abgezogen.</p></details>
+</section>
+<section class="card">
+<h2>Hauptprodukt</h2>
+<div class="fields">
+<label>Breite <span>mm</span><input id="main-width" inputmode="numeric" value="60" required></label>
+<label>Stärke <span>mm</span><input id="main-height" inputmode="numeric" value="80" required></label>
+</div>
+<p class="hint">Kanthölzer dürfen im Schnittplan um 90° gedreht werden.</p>
+</section>
+<section class="card">
+<h2>Nebenprodukte</h2>
+<div id="sides"></div>
+<button class="secondary" id="add" type="button">Nebenprodukt hinzufügen</button>
+</section>
+<section class="card controls">
+<label>Optimierungsziel
+<select id="priority"><option value="main">Möglichst viele Hauptprodukte</option><option value="volume">Möglichst viel Schnittholz</option></select>
+</label>
+<p class="hint">Beide Varianten verlangen mindestens ein Hauptprodukt.</p>
+<button type="submit">Schnittplan berechnen</button>
+<p class="error" id="form-status" role="alert" hidden></p>
+</section>
+</form>
+<section class="card results" id="result" aria-labelledby="result-title" hidden>
+<div class="result-head"><h2 id="result-title" tabindex="-1">Schnittplan</h2><span id="result-diameter"></span></div>
+<canvas id="diagram" width="720" height="720" role="img" aria-label="Schnittplan am Zopf. Die Maße und Positionen stehen unter der Grafik."></canvas>
+<div class="legend"><span class="primary-key">Hauptprodukt</span><span class="side-key">Nebenprodukte</span></div>
+<div class="stats">
+<div><strong id="pieces"></strong><span>Stücke</span></div>
+<div><strong id="volume"></strong><span>Schnittholz frisch</span></div>
+<div><strong id="yield"></strong><span>Volumenausbeute</span></div>
+</div>
+<p class="hint" id="log-volume"></p>
+<h3>Stückliste</h3>
+<div class="table-wrap"><table><thead><tr><th>Produkt</th><th id="dimension-heading">Maße in mm</th><th id="cut-dimensions" hidden>Sägeschnittmaß in mm</th><th>Stück</th></tr></thead><tbody id="piece-list"></tbody></table></div>
+<details><summary>Schnittreihen und Abstände</summary><p class="hint">Abstände ab Stammmitte. Negative Werte liegen links bzw. oberhalb der Mitte. Reihen von oben nach unten.</p><ol id="row-list"></ol></details>
+<details><summary>Grundlage der Berechnung</summary><p>Gerader Stamm, runder Zopf, rechteckige Schnitte ohne Waldkante. SägWerk optimiert waagerechte Schnittreihen im Millimeterraster. Alle Stücke laufen über die volle Stammlänge. Die Volumenausbeute vergleicht das frische Schnittholz mit dem aus dem Mitteldurchmesser geschätzten Stammvolumen. Die Grafik und Schnittpositionen zeigen die Maße beim Einschnitt.</p></details>
+</section>
+</main>
+<template id="side-template">
+<fieldset class="side">
+<legend>Nebenprodukt</legend>
+<div class="side-top">
+<label>Zuschnitt<select class="shape"><option value="board">Brett mit variabler Breite</option><option value="fixed">Festes Rechteckmaß</option></select></label>
+<button type="button" class="remove secondary">Entfernen</button>
+</div>
+<div class="fields">
+<label><span class="width-label">Mindestbreite</span> <span>mm</span><input class="width" inputmode="numeric" value="70" required></label>
+<label>Stärke <span>mm</span><input class="height" inputmode="numeric" value="25" required></label>
+</div>
+</fieldset>
+</template>
+</body>
+</html>
