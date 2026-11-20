@@ -199,8 +199,65 @@ function solveCuts({diameter, middle, length, kerf, reserve, products, priority}
     };
 }
 
+// A two-stage breakdown: first square a rectangular cant, saw it into boards,
+// then turn each board by 90 degrees and rip it into the main products.
+function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
+{
+    const usable = diameter - 2 * reserve;
+    const radius = usable / 2;
+    const product = products[0];
+    let best = null;
+    for (const [pieceWidth, pieceHeight] of [[product.width, product.height], [product.height, product.width]])
+    {
+        for (let boardCount = 1; boardCount * (pieceHeight + kerf) <= usable + kerf; boardCount++)
+        {
+            const blockHeight = boardCount * pieceHeight + (boardCount - 1) * kerf;
+            for (let piecesPerBoard = 1; piecesPerBoard * (pieceWidth + kerf) <= usable + kerf; piecesPerBoard++)
+            {
+                const blockWidth = piecesPerBoard * pieceWidth + (piecesPerBoard - 1) * kerf;
+                if (Math.hypot(blockWidth / 2, blockHeight / 2) > radius + 1e-9)
+                {
+                    continue;
+                }
+                const count = boardCount * piecesPerBoard;
+                // Count the four cuts to square the cant, the board cuts, and
+                // the rip cuts after turning each board.
+                const cuts = 4 + (boardCount - 1) + boardCount * (piecesPerBoard - 1);
+                if (!best || count > best.count || (count === best.count &&
+                    (cuts < best.cuts || (cuts === best.cuts && boardCount < best.boardCount))))
+                {
+                    best = {pieceWidth, pieceHeight, boardCount, piecesPerBoard,
+                        blockWidth, blockHeight, count, cuts};
+                }
+            }
+        }
+    }
+    if (!best)
+    {
+        return null;
+    }
+    const rows = [];
+    const firstX = -(best.blockWidth - kerf) / 2;
+    const firstY = -(best.blockHeight - kerf) / 2;
+    for (let board = 0; board < best.boardCount; board++)
+    {
+        const pieces = [];
+        for (let piece = 0; piece < best.piecesPerBoard; piece++)
+        {
+            pieces.push({width: best.pieceWidth, height: best.pieceHeight, index: 0,
+                x: firstX + piece * (best.pieceWidth + kerf),
+                y: firstY + board * (best.pieceHeight + kerf)});
+        }
+        rows.push(pieces);
+    }
+    const timberVolume = best.count * product.width * product.height * length / 1e6;
+    const logVolume = Math.PI * (middle / 2000) ** 2 * length;
+    return {rows, timberVolume, logVolume, count: best.count, mainCount: best.count,
+        yieldPercent: 100 * timberVolume / logVolume, block: best};
+}
+
 if (typeof module !== "undefined")
 {
-    module.exports = { solveCuts };
+    module.exports = { solveCuts, solveBlockCuts };
 }
 

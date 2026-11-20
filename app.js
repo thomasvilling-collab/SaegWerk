@@ -7,6 +7,8 @@ const number = (value, digits = 0) => value.toLocaleString("de-DE", {maximumFrac
 const defaults = { fields: {}, sides: [{shape: "board", width: "70", height: "25"}] };
 const fieldIds = ["diameter", "middle", "length", "kerf", "reserve", "main-width", "main-height", "priority", "size-mode", "shrinkage"];
 let lastPlan = null;
+let pendingWorker = null;
+let applyingUpdate = false;
 
 function addSide(data = {})
 {
@@ -183,6 +185,16 @@ function drawPlan(plan, options)
 function display(plan, options)
 {
     element("result").hidden = false;
+    const blockMethod = element("block-method");
+    blockMethod.hidden = !plan.block;
+    if (plan.block)
+    {
+        blockMethod.textContent = "Bohlenwenden: rechteckigen Block von " + plan.block.blockWidth + " × " +
+            plan.block.blockHeight + " mm herstellen, in " + plan.block.boardCount + " Bohle(n) mit je " +
+            plan.block.piecesPerBoard + " Hauptprodukt(en) auftrennen, die Bohlen um 90° drehen und " +
+            "in die Hauptprodukte auftrennen. Geschätzte Sägeschnitte: " +
+            plan.block.cuts + ". Nebenprodukte sind in dieser Strategie nicht berücksichtigt.";
+    }
     element("result-diameter").textContent = "Zopf Ø " + number(options.diameter / 10, 1) + " cm";
     element("pieces").textContent = number(plan.count);
     element("volume").textContent = number(plan.timberVolume, 4) + " m³";
@@ -244,7 +256,7 @@ function calculate(focus)
     try
     {
         const options = settings();
-        const plan = solveCuts(options);
+        const plan = options.priority === "block" ? solveBlockCuts(options) : solveCuts(options);
         if (!plan)
         {
             throw new Error("Das Hauptprodukt passt mit diesen Maßen nicht in den nutzbaren Zopf.");
@@ -277,6 +289,13 @@ function updateShrinkageControl()
 }
 
 element("size-mode").addEventListener("input", updateShrinkageControl);
+function updatePriorityHint()
+{
+    element("priority-hint").textContent = element("priority").value === "block" ?
+        "Maximiert die Hauptprodukt-Stückzahl. Bei gleicher Stückzahl bevorzugt SägWerk weniger Bohlen zum Drehen. Nebenprodukte werden nicht eingeplant." :
+        "Beide Varianten verlangen mindestens ein Hauptprodukt.";
+}
+element("priority").addEventListener("input", updatePriorityHint);
 form.addEventListener("input", invalidate);
 form.addEventListener("submit", (event) =>
 {
@@ -323,10 +342,66 @@ for (const side of restored.sides.slice(0, 12))
     }
 }
 updateShrinkageControl();
+updatePriorityHint();
 form.noValidate = true;
 calculate(false);
+function showUpdate(worker)
+{
+    pendingWorker = worker;
+    element("update-panel").hidden = !worker;
+    element("update-status").textContent = worker ? "Eine neue Version ist bereit." : "";
+}
+
+element("apply-update").addEventListener("click", () =>
+{
+    if (!pendingWorker || applyingUpdate)
+    {
+        return;
+    }
+    if (!window.confirm("SägWerk jetzt aktualisieren? Bitte andere geöffnete SägWerk-Fenster vorher schließen."))
+    {
+        return;
+    }
+    applyingUpdate = true;
+    element("apply-update").disabled = true;
+    element("update-status").textContent = "Update wird übernommen …";
+    pendingWorker.postMessage({type: "ACTIVATE_UPDATE"});
+});
+
 if ("serviceWorker" in navigator && ["http:", "https:"].includes(location.protocol))
 {
-    navigator.serviceWorker.register("./service-worker.js").catch(console.error);
+    navigator.serviceWorker.addEventListener("controllerchange", () =>
+    {
+        if (applyingUpdate)
+        {
+            window.location.reload();
+        }
+    });
+    navigator.serviceWorker.register("./service-worker.js", {scope: "./", updateViaCache: "none"}).then((registration) =>
+    {
+        if (registration.waiting && navigator.serviceWorker.controller)
+        {
+            showUpdate(registration.waiting);
+        }
+        registration.addEventListener("updatefound", () =>
+        {
+            const worker = registration.installing;
+            if (!worker)
+            {
+                return;
+            }
+            worker.addEventListener("statechange", () =>
+            {
+                if (worker.state === "installed" && navigator.serviceWorker.controller)
+                {
+                    showUpdate(worker);
+                }
+            });
+        });
+        if (navigator.onLine)
+        {
+            registration.update().catch(() => {});
+        }
+    }).catch(console.error);
 }
 

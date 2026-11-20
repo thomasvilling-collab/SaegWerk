@@ -1,6 +1,6 @@
 "use strict";
 
-const cacheName = "saegwerk-offline-v2";
+const cacheName = "saegwerk-offline-v4";
 const assets = ["./index.html", "./style.css", "./solver.js", "./app.js", "./manifest.webmanifest",
     "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 const scope = self.registration.scope;
@@ -9,6 +9,13 @@ self.addEventListener("install", (event) =>
 {
     event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(
         assets.map((path) => new Request(new URL(path, scope), {cache: "reload"})))));
+});
+self.addEventListener("message", (event) =>
+{
+    if (event.data && event.data.type === "ACTIVATE_UPDATE")
+    {
+        self.skipWaiting();
+    }
 });
 self.addEventListener("activate", (event) =>
 {

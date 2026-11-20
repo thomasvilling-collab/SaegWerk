@@ -16,6 +16,10 @@
 <header><div class="header"><span class="mark" aria-hidden="true">SW</span><strong>SägWerk</strong></div></header>
 <main>
 <div class="intro"><h1>Schnitteinteilung</h1><p>Plane den Einschnitt eines Stammes aus deinen gewünschten Holzmaßen.</p></div>
+<section class="update-panel" id="update-panel" aria-live="polite" hidden>
+<p id="update-status"></p>
+<button type="button" id="apply-update">Neue Version installieren</button>
+</section>
 <form id="plan-form">
 <section class="card">
 <h2>Stamm</h2>
@@ -52,9 +56,9 @@
 </section>
 <section class="card controls">
 <label>Optimierungsziel
-<select id="priority"><option value="main">Möglichst viele Hauptprodukte</option><option value="volume">Möglichst viel Schnittholz</option></select>
+<select id="priority"><option value="main">Möglichst viele Hauptprodukte</option><option value="volume">Möglichst viel Schnittholz</option><option value="block">Bohlenwenden: Hauptprodukte als Block</option></select>
 </label>
-<p class="hint">Beide Varianten verlangen mindestens ein Hauptprodukt.</p>
+<p class="hint" id="priority-hint">Beide Varianten verlangen mindestens ein Hauptprodukt.</p>
 <button type="submit">Schnittplan berechnen</button>
 <p class="error" id="form-status" role="alert" hidden></p>
 </section>
@@ -63,6 +67,7 @@
 <div class="result-head"><h2 id="result-title" tabindex="-1">Schnittplan</h2><span id="result-diameter"></span></div>
 <canvas id="diagram" width="720" height="720" role="img" aria-label="Schnittplan am Zopf. Die Maße und Positionen stehen unter der Grafik."></canvas>
 <div class="legend"><span class="primary-key">Hauptprodukt</span><span class="side-key">Nebenprodukte</span></div>
+<p class="hint" id="block-method" hidden></p>
 <div class="stats">
 <div><strong id="pieces"></strong><span>Stücke</span></div>
 <div><strong id="volume"></strong><span>Schnittholz frisch</span></div>
