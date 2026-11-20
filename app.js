@@ -193,7 +193,8 @@ function display(plan, options)
             plan.block.blockHeight + " mm herstellen, in " + plan.block.boardCount + " Bohle(n) mit je " +
             plan.block.piecesPerBoard + " Hauptprodukt(en) auftrennen, die Bohlen um 90° drehen und " +
             "in die Hauptprodukte auftrennen. Weitere Hauptprodukte aus Restbereichen: " + plan.block.sideMainCount +
-            ". Seitenware: " + plan.block.sideCount + " Stück. Geschätzte Sägeschnitte: " + plan.block.cuts + ".";
+            ". Links und rechts aufgeteilte Stücke: " + plan.block.flankCount + ". Seitenware: " +
+            plan.block.sideCount + " Stück. Geschätzte Sägeschnitte: " + plan.block.cuts + ".";
     }
     element("result-diameter").textContent = "Zopf Ø " + number(options.diameter / 10, 1) + " cm";
     element("pieces").textContent = number(plan.count);

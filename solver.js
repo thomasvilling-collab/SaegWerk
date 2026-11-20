@@ -224,7 +224,8 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
                 // the rip cuts after turning each board.
                 const cuts = 4 + (boardCount - 1) + boardCount * (piecesPerBoard - 1);
                 if (!best || count > best.count || (count === best.count &&
-                    (cuts < best.cuts || (cuts === best.cuts && boardCount < best.boardCount))))
+                    (cuts < best.cuts || (cuts === best.cuts &&
+                        (blockWidth < best.blockWidth || (blockWidth === best.blockWidth && boardCount < best.boardCount))))))
                 {
                     best = {pieceWidth, pieceHeight, boardCount, piecesPerBoard,
                         blockWidth, blockHeight, count, cuts};
@@ -253,7 +254,8 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
     function betterSide(a, b)
     {
         return !b || a.mainCount > b.mainCount || (a.mainCount === b.mainCount &&
-            (a.area > b.area || (a.area === b.area && a.count < b.count)));
+            ((a.flankArea || 0) > (b.flankArea || 0) || ((a.flankArea || 0) === (b.flankArea || 0) &&
+                (a.area > b.area || (a.area === b.area && a.count < b.count)))));
     }
     const sideGroups = Array.from(sidesByHeight, ([height, variants]) =>
     {
@@ -310,7 +312,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         for (let item = pattern; item && item.piece; item = item.previous) pieces.push(item.piece);
         return pieces.reverse();
     }
-    const sidePlan = [{area: 0, mainCount: 0, count: 0, previous: null}];
+    const sidePlan = [{area: 0, flankArea: 0, flankCount: 0, mainCount: 0, count: 0, previous: null}];
     const blockTop = radius - best.blockHeight / 2;
     const blockBottom = radius + best.blockHeight / 2;
     for (let bottom = 1; bottom <= usable; bottom++)
@@ -331,6 +333,8 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
             const previousEnd = Math.max(0, top - kerf);
             const prior = sidePlan[previousEnd];
             const next = {area: prior.area + rowArea,
+                flankArea: prior.flankArea + (besideBlock ? rowArea : 0),
+                flankCount: prior.flankCount + (besideBlock ? pattern.count * 2 : 0),
                 mainCount: prior.mainCount + pattern.mainCount * (besideBlock ? 2 : 1),
                 count: prior.count + pattern.count * (besideBlock ? 2 : 1),
                 top, height: group.height, halfWidth, slotWidth, besideBlock, pattern,
@@ -358,7 +362,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
                 leftX += piece.width + kerf;
                 rightX += piece.width + kerf;
             }
-            sideRows.push([...left, ...right]);
+            sideRows.push({pieces: [...left, ...right], besideBlock: true, piecesPerSide: pieces.length});
         }
         else
         {
@@ -369,7 +373,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
                 row.push({...piece, x, y});
                 x += piece.width + kerf;
             }
-            sideRows.push(row);
+            sideRows.push({pieces: row, besideBlock: false, piecesPerSide: row.length});
         }
     }
     sideRows.reverse();
@@ -387,13 +391,13 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         }
         rows.push(pieces);
     }
-    rows.push(...sideRows);
+    rows.push(...sideRows.map((sideRow) => sideRow.pieces));
     let sideVolume = 0;
     let sideCuts = 0;
-    for (const row of sideRows)
+    for (const sideRow of sideRows)
     {
-        sideCuts += Math.max(0, row.length - 1);
-        for (const piece of row)
+        sideCuts += Math.max(0, sideRow.piecesPerSide - 1) * (sideRow.besideBlock ? 2 : 1);
+        for (const piece of sideRow.pieces)
         {
             sideVolume += piece.width * piece.height * length / 1e6;
         }
@@ -404,7 +408,8 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         mainCount: best.count + sidePlan[usable].mainCount,
         yieldPercent: 100 * timberVolume / logVolume,
         block: {...best, sideMainCount: sidePlan[usable].mainCount,
-            sideCount: sidePlan[usable].count - sidePlan[usable].mainCount, cuts: best.cuts + sideCuts}};
+            sideCount: sidePlan[usable].count - sidePlan[usable].mainCount,
+            flankCount: sidePlan[usable].flankCount, cuts: best.cuts + sideCuts}};
 }
 
 if (typeof module !== "undefined")
