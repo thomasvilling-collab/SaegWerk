@@ -254,8 +254,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
     function betterSide(a, b)
     {
         return !b || a.mainCount > b.mainCount || (a.mainCount === b.mainCount &&
-            ((a.flankArea || 0) > (b.flankArea || 0) || ((a.flankArea || 0) === (b.flankArea || 0) &&
-                (a.area > b.area || (a.area === b.area && a.count < b.count)))));
+            (a.area > b.area || (a.area === b.area && a.count > b.count)));
     }
     const sideGroups = Array.from(sidesByHeight, ([height, variants]) =>
     {
@@ -312,7 +311,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         for (let item = pattern; item && item.piece; item = item.previous) pieces.push(item.piece);
         return pieces.reverse();
     }
-    const sidePlan = [{area: 0, flankArea: 0, flankCount: 0, mainCount: 0, count: 0, previous: null}];
+    const sidePlan = [{area: 0, mainCount: 0, count: 0, previous: null}];
     const blockTop = radius - best.blockHeight / 2;
     const blockBottom = radius + best.blockHeight / 2;
     for (let bottom = 1; bottom <= usable; bottom++)
@@ -333,8 +332,6 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
             const previousEnd = Math.max(0, top - kerf);
             const prior = sidePlan[previousEnd];
             const next = {area: prior.area + rowArea,
-                flankArea: prior.flankArea + (besideBlock ? rowArea : 0),
-                flankCount: prior.flankCount + (besideBlock ? pattern.count * 2 : 0),
                 mainCount: prior.mainCount + pattern.mainCount * (besideBlock ? 2 : 1),
                 count: prior.count + pattern.count * (besideBlock ? 2 : 1),
                 top, height: group.height, halfWidth, slotWidth, besideBlock, pattern,
@@ -378,26 +375,38 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         }
     }
     sideRows.reverse();
-    const faces = {first: [], second: [], oppositeFirst: [], last: []};
+    const faceBoards = {first: [], second: [], oppositeFirst: [], last: []};
+    function addFaceBoard(face, pieces, axis, outer, inner)
+    {
+        faceBoards[face].push({pieces, axis, outer, inner});
+    }
     for (const sideRow of sideRows)
     {
         if (sideRow.besideBlock)
         {
-            faces.second.push(...sideRow.rightPieces);
-            faces.last.push(...sideRow.leftPieces);
+            addFaceBoard("second", sideRow.rightPieces, "x",
+                Math.max(...sideRow.rightPieces.map((piece) => piece.x + piece.width)),
+                Math.min(...sideRow.rightPieces.map((piece) => piece.x)));
+            addFaceBoard("last", sideRow.leftPieces, "x",
+                Math.min(...sideRow.leftPieces.map((piece) => piece.x)),
+                Math.max(...sideRow.leftPieces.map((piece) => piece.x + piece.width)));
         }
         else if (sideRow.pieces[0].y + sideRow.pieces[0].height <= -best.blockHeight / 2)
         {
-            faces.first.push(...sideRow.pieces);
+            addFaceBoard("first", sideRow.pieces, "y",
+                Math.min(...sideRow.pieces.map((piece) => piece.y)),
+                Math.max(...sideRow.pieces.map((piece) => piece.y + piece.height)));
         }
         else
         {
-            faces.oppositeFirst.push(...sideRow.pieces);
+            addFaceBoard("oppositeFirst", sideRow.pieces, "y",
+                Math.max(...sideRow.pieces.map((piece) => piece.y + piece.height)),
+                Math.min(...sideRow.pieces.map((piece) => piece.y)));
         }
     }
     const rows = [];
-    const firstX = -(best.blockWidth - kerf) / 2;
-    const firstY = -(best.blockHeight - kerf) / 2;
+    const firstX = -best.blockWidth / 2;
+    const firstY = -best.blockHeight / 2;
     for (let board = 0; board < best.boardCount; board++)
     {
         const pieces = [];
@@ -411,13 +420,62 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
     }
     rows.push(...sideRows.map((sideRow) => sideRow.pieces));
     let sideVolume = 0;
-    let sideCuts = 0;
     for (const sideRow of sideRows)
     {
-        sideCuts += Math.max(0, sideRow.piecesPerSide - 1) * (sideRow.besideBlock ? 2 : 1);
         for (const piece of sideRow.pieces)
         {
             sideVolume += piece.width * piece.height * length / 1e6;
+        }
+    }
+    const cutSequence = [];
+    function addCut(face, operation, axis, offset, detail)
+    {
+        const roundedOffset = Math.round(offset * 10) / 10;
+        const existing = cutSequence.find((cut) => cut.face === face && cut.axis === axis &&
+            cut.offset === roundedOffset);
+        if (existing)
+        {
+            if (detail && !existing.detail.includes(detail)) existing.detail += "; " + detail;
+            return;
+        }
+        cutSequence.push({face, operation, axis, offset: roundedOffset, detail: detail || ""});
+    }
+    const faceDefinitions = [
+        {key: "first", name: "Fläche 1 oben", axis: "y", coreOffset: -best.blockHeight / 2},
+        {key: "second", name: "Fläche 2 rechts · nach 90° Wende", axis: "x", coreOffset: best.blockWidth / 2},
+        {key: "oppositeFirst", name: "Fläche 3 gegenüber · nach 90° Wende", axis: "y", coreOffset: best.blockHeight / 2},
+        {key: "last", name: "Fläche 4 links · nach 90° Wende", axis: "x", coreOffset: -best.blockWidth / 2}
+    ];
+    for (const face of faceDefinitions)
+    {
+        const boards = faceBoards[face.key].slice().sort((a, b) => Math.abs(b.outer) - Math.abs(a.outer));
+        if (!boards.length)
+        {
+            addCut(face.name, "Fläche plan sägen und Kernkante herstellen", face.axis, face.coreOffset);
+            continue;
+        }
+        for (const board of boards)
+        {
+            const detail = board.pieces.map((piece) => piece.width + " × " + piece.height + " mm").join(", ");
+            addCut(face.name, "Fläche anlegen", board.axis, board.outer, detail);
+            addCut(face.name, "Seitenware lösen", board.axis, board.inner, detail);
+        }
+        addCut(face.name, "Hauptproduktkern freischneiden", face.axis, face.coreOffset);
+    }
+    for (let board = 1; board < best.boardCount; board++)
+    {
+        const offset = firstY + board * (best.pieceHeight + kerf) - kerf / 2;
+        addCut("Hauptproduktblock", "Bohle " + (board + 1) + " abtrennen", "y", offset,
+            best.pieceWidth + " × " + best.pieceHeight + " mm");
+    }
+    for (let board = 0; board < best.boardCount; board++)
+    {
+        for (let piece = 1; piece < best.piecesPerBoard; piece++)
+        {
+            const offset = firstX + piece * (best.pieceWidth + kerf) - kerf / 2;
+            addCut("Hauptproduktblock · Bohle " + (board + 1) + " um 90° gedreht",
+                "Hauptprodukte auftrennen", "Bohlenbreite", offset,
+                best.pieceWidth + " × " + best.pieceHeight + " mm");
         }
     }
     const timberVolume = best.count * product.width * product.height * length / 1e6 + sideVolume;
@@ -427,11 +485,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         yieldPercent: 100 * timberVolume / logVolume,
         block: {...best, sideMainCount: sidePlan[usable].mainCount,
             sideCount: sidePlan[usable].count - sidePlan[usable].mainCount,
-            flankCount: sidePlan[usable].flankCount,
-            faceCounts: {first: faces.first.length, second: faces.second.length,
-                oppositeFirst: faces.oppositeFirst.length, last: faces.last.length},
-            facePieces: faces,
-            cuts: best.cuts + sideCuts}};
+            cuts: cutSequence.length, cutSequence}};
 }
 
 if (typeof module !== "undefined")
