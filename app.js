@@ -183,6 +183,30 @@ function drawPlan(plan, options)
     if (plan.block && element("show-cut-numbers").checked)
     {
         const cutRadius = options.diameter / 2;
+        const pixelUnit = Math.min(window.devicePixelRatio || 1, 3) / scale;
+        const markers = [];
+        function chooseMarker(x, y, index)
+        {
+            const candidates = [];
+            const minimumDistance = 23 * pixelUnit;
+            for (let ring = 0; ring <= 8; ring++)
+            {
+                const distance = ring * 18 * pixelUnit;
+                for (let ray = 0; ray < 16; ray++)
+                {
+                    const angle = (ray + index * 0.381966) * 2 * Math.PI / 16;
+                    const candidate = {x: x + Math.cos(angle) * distance,
+                        y: y + Math.sin(angle) * distance};
+                    if (Math.hypot(candidate.x, candidate.y) > cutRadius - 12 * pixelUnit) continue;
+                    const clearance = markers.length ? Math.min(...markers.map((marker) =>
+                        Math.hypot(candidate.x - marker.x, candidate.y - marker.y))) : Infinity;
+                    if (clearance >= minimumDistance) return candidate;
+                    candidates.push({...candidate, clearance: clearance - distance / 100});
+                }
+            }
+            candidates.sort((a, b) => b.clearance - a.clearance);
+            return candidates[0] || {x, y};
+        }
         for (const [index, cut] of plan.block.cutSequence.entries())
         {
             let x1;
@@ -197,7 +221,7 @@ function drawPlan(plan, options)
                 x1 = -half;
                 x2 = half;
                 y1 = y2 = cut.offset;
-                labelX = -half + 13 / scale;
+                labelX = -half + 13 * pixelUnit;
                 labelY = cut.offset;
             }
             else if (cut.axis === "x")
@@ -207,40 +231,46 @@ function drawPlan(plan, options)
                 y1 = -half;
                 y2 = half;
                 labelX = cut.offset;
-                labelY = -half + 13 / scale;
+                labelY = -half + 13 * pixelUnit;
             }
             else
             {
-                const boardNumber = Number(cut.face.match(/Bohle (\d+)/)?.[1] || 1);
                 const block = plan.block;
-                const centerY = -block.blockHeight / 2 + (boardNumber - 1) *
-                    (block.pieceHeight + options.kerf) + block.pieceHeight / 2;
+                const [firstBoard, lastBoard] = cut.boardRange || [1, 1];
+                const top = -block.blockHeight / 2 + (firstBoard - 1) *
+                    (block.pieceHeight + options.kerf);
+                const bottom = -block.blockHeight / 2 + (lastBoard - 1) *
+                    (block.pieceHeight + options.kerf) + block.pieceHeight;
                 x1 = x2 = cut.offset;
-                y1 = centerY - block.pieceHeight / 2;
-                y2 = centerY + block.pieceHeight / 2;
+                y1 = top;
+                y2 = bottom;
                 labelX = cut.offset;
-                labelY = centerY;
+                labelY = (top + bottom) / 2;
             }
             ctx.beginPath();
-            ctx.setLineDash([5 / scale, 3 / scale]);
+            ctx.setLineDash([5 * pixelUnit, 3 * pixelUnit]);
             ctx.moveTo(x1, y1);
             ctx.lineTo(x2, y2);
-            ctx.lineWidth = 1.5 / scale;
+            ctx.lineWidth = 1.5 * pixelUnit;
             ctx.strokeStyle = "#b03b2e";
             ctx.stroke();
             ctx.setLineDash([]);
+            markers.push({number: index + 1, ...chooseMarker(labelX, labelY, index)});
+        }
+        for (const marker of markers)
+        {
             ctx.beginPath();
-            ctx.arc(labelX, labelY, 10 / scale, 0, 2 * Math.PI);
+            ctx.arc(marker.x, marker.y, 10 * pixelUnit, 0, 2 * Math.PI);
             ctx.fillStyle = "#fffdf5";
             ctx.fill();
-            ctx.lineWidth = 1.5 / scale;
+            ctx.lineWidth = 1.5 * pixelUnit;
             ctx.strokeStyle = "#9c2f24";
             ctx.stroke();
             ctx.fillStyle = "#78251e";
-            ctx.font = "700 " + 10 / scale + "px system-ui";
+            ctx.font = "700 " + 10 * pixelUnit + "px system-ui";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(String(index + 1), labelX, labelY);
+            ctx.fillText(String(marker.number), marker.x, marker.y);
         }
     }
 }
@@ -259,7 +289,8 @@ function display(plan, options)
     {
         blockMethod.textContent = "Schnittfolge in der Draufsicht auf den Stammzopf; die erste Fläche liegt oben. " +
             "Zuerst möglichst viele Hauptprodukte, danach möglichst viel Seitenware. Die Schnitte folgen in der " +
-            "unten nummerierten Reihenfolge. Hauptproduktblock: " + plan.block.blockWidth + " × " +
+            "unten nummerierten Reihenfolge. Gleich große Hauptproduktbohlen werden gemeinsam um 90° gedreht " +
+            "und aufgetrennt. Hauptproduktblock: " + plan.block.blockWidth + " × " +
             plan.block.blockHeight + " mm; Hauptprodukte außerhalb des Kerns: " + plan.block.sideMainCount +
             "; Seitenware: " + plan.block.sideCount + ".";
         blockSteps.replaceChildren(...plan.block.cutSequence.map((cut) =>
@@ -269,7 +300,7 @@ function display(plan, options)
                 "Bohlenbreite, " + number(cut.offset, 1) + " mm ab Blockmitte" :
                 cut.axis + " = " + number(cut.offset, 1) + " mm ab Stammmitte";
             item.textContent = cut.face + " — " + cut.operation + " bei " + offset +
-                (cut.detail ? ". Seitenware/Querschnitt: " + cut.detail : ".");
+                (cut.detail ? ". Schnittmaß: " + cut.detail : ".");
             return item;
         }));
         blockFinishing.textContent = "Nachbearbeitung, nicht nummeriert: Seitenware auf die endgültigen Breiten und Stärken auftrennen.";

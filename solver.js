@@ -428,7 +428,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         }
     }
     const cutSequence = [];
-    function addCut(face, operation, axis, offset, detail)
+    function addCut(face, operation, axis, offset, detail, extra = {})
     {
         const roundedOffset = Math.round(offset * 10) / 10;
         const existing = cutSequence.find((cut) => cut.face === face && cut.axis === axis &&
@@ -438,7 +438,7 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
             if (detail && !existing.detail.includes(detail)) existing.detail += "; " + detail;
             return;
         }
-        cutSequence.push({face, operation, axis, offset: roundedOffset, detail: detail || ""});
+        cutSequence.push({face, operation, axis, offset: roundedOffset, detail: detail || "", ...extra});
     }
     const faceDefinitions = [
         {key: "first", name: "Fläche 1 oben", axis: "y", coreOffset: -best.blockHeight / 2},
@@ -468,14 +468,18 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         addCut("Hauptproduktblock", "Bohle " + (board + 1) + " abtrennen", "y", offset,
             best.pieceWidth + " × " + best.pieceHeight + " mm");
     }
-    for (let board = 0; board < best.boardCount; board++)
+    if (best.piecesPerBoard > 1)
     {
+        const boardDescription = best.boardCount > 1 ?
+            "Bohlen 1–" + best.boardCount + " gemeinsam um 90° gedreht" :
+            "Bohle 1 um 90° gedreht";
         for (let piece = 1; piece < best.piecesPerBoard; piece++)
         {
             const offset = firstX + piece * (best.pieceWidth + kerf) - kerf / 2;
-            addCut("Hauptproduktblock · Bohle " + (board + 1) + " um 90° gedreht",
-                "Hauptprodukte auftrennen", "Bohlenbreite", offset,
-                best.pieceWidth + " × " + best.pieceHeight + " mm");
+            addCut("Hauptproduktblock · " + boardDescription,
+                best.boardCount > 1 ? "Hauptprodukte gemeinsam auftrennen" : "Hauptprodukte auftrennen", "Bohlenbreite", offset,
+                best.pieceWidth + " × " + best.pieceHeight + " mm je Bohle; " + best.boardCount + " gleiche Bohlen",
+                {boardRange: [1, best.boardCount]});
         }
     }
     const timberVolume = best.count * product.width * product.height * length / 1e6 + sideVolume;
