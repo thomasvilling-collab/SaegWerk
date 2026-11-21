@@ -187,42 +187,28 @@ function display(plan, options)
     element("result").hidden = false;
     const blockMethod = element("block-method");
     const blockSteps = element("block-steps");
+    const blockFinishing = element("block-finishing");
     blockMethod.hidden = !plan.block;
     blockSteps.hidden = !plan.block;
+    blockFinishing.hidden = !plan.block;
     if (plan.block)
     {
-        const faces = plan.block.faceCounts;
-        const faceCuts = (pieces) => pieces.length ? pieces.map((piece) =>
-        {
-            const product = options.products[piece.index];
-            const label = piece.index === 0 ? "Hauptprodukt" :
-                (product.flexible ? "Brett " : "Nebenprodukt ") + piece.index;
-            return label + " " + piece.width + " × " + piece.height + " mm";
-        }).join("; ") : "keine Stücke mit den eingestellten Maßen";
         blockMethod.textContent = "Schnittfolge in der Draufsicht auf den Stammzopf; die erste Fläche liegt oben. " +
-            "Seitenware auf allen vier Flächen: " + plan.block.sideCount + " Stück. Zusätzliche Hauptprodukte " +
-            "außerhalb des Kerns: " + plan.block.sideMainCount + ". Geschätzte Sägeschnitte: " + plan.block.cuts + ".";
-        const steps = [
-            "Erste Fläche abflachen; mit dem nächsten Schnitt möglichst schon Seitenware lösen (" +
-                faces.first + " Stück: " + faceCuts(plan.block.facePieces.first) + ").",
-            "Um 90° drehen und den gleichen Ablauf an der angrenzenden Fläche wiederholen (" +
-                faces.second + " Stück: " + faceCuts(plan.block.facePieces.second) + ").",
-            "Um weitere 90° drehen. Von der gegenüberliegenden Fläche aus den Hauptproduktkern mit " +
-                plan.block.blockWidth + " × " + plan.block.blockHeight + " mm festlegen. Hier nur die äußere Seitenware sägen (" +
-                faces.oppositeFirst + " Stück: " + faceCuts(plan.block.facePieces.oppositeFirst) +
-                "); den Kern noch nicht auftrennen.",
-            "Um 90° drehen und die letzte Fläche abflachen und Seitenware lösen (" +
-                faces.last + " Stück: " + faceCuts(plan.block.facePieces.last) + ").",
-            "Den verbliebenen Hauptproduktblock in " + plan.block.boardCount + " dicke Bohle(n) auftrennen.",
-            "Die Bohle(n) um 90° drehen und jeweils in " + plan.block.piecesPerBoard + " Hauptprodukt(e) auftrennen.",
-            "Zum Schluss die zuvor abgetrennte Seitenware auf ihre fertigen Maße auftrennen."
-        ];
-        blockSteps.replaceChildren(...steps.map((text) =>
+            "Zuerst möglichst viele Hauptprodukte, danach möglichst viel Seitenware. Die Schnitte folgen in der " +
+            "unten nummerierten Reihenfolge. Hauptproduktblock: " + plan.block.blockWidth + " × " +
+            plan.block.blockHeight + " mm; Hauptprodukte außerhalb des Kerns: " + plan.block.sideMainCount +
+            "; Seitenware: " + plan.block.sideCount + ".";
+        blockSteps.replaceChildren(...plan.block.cutSequence.map((cut) =>
         {
             const item = document.createElement("li");
-            item.textContent = text;
+            const offset = cut.axis === "Bohlenbreite" ?
+                "Bohlenbreite, " + number(cut.offset, 1) + " mm ab Blockmitte" :
+                cut.axis + " = " + number(cut.offset, 1) + " mm ab Stammmitte";
+            item.textContent = cut.face + " — " + cut.operation + " bei " + offset +
+                (cut.detail ? ". Seitenware/Querschnitt: " + cut.detail : ".");
             return item;
         }));
+        blockFinishing.textContent = "Nachbearbeitung, nicht nummeriert: Seitenware auf die endgültigen Breiten und Stärken auftrennen.";
     }
     element("result-diameter").textContent = "Zopf Ø " + number(options.diameter / 10, 1) + " cm";
     element("pieces").textContent = number(plan.count);
