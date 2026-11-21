@@ -56,7 +56,7 @@
 </section>
 <section class="card controls">
 <label>Optimierungsziel
-<select id="priority"><option value="main">Möglichst viele Hauptprodukte</option><option value="volume">Möglichst viel Schnittholz</option><option value="block">Bohlenwenden: Hauptprodukte als Block</option></select>
+<select id="priority"><option value="main">Möglichst viele Hauptprodukte</option><option value="volume">Möglichst viel Schnittholz</option><option value="block">Wood-Mizer: vierseitiger Einschnitt</option></select>
 </label>
 <p class="hint" id="priority-hint">Beide Varianten verlangen mindestens ein Hauptprodukt.</p>
 <button type="submit">Schnittplan berechnen</button>
@@ -68,6 +68,7 @@
 <canvas id="diagram" width="720" height="720" role="img" aria-label="Schnittplan am Zopf. Die Maße und Positionen stehen unter der Grafik."></canvas>
 <div class="legend"><span class="primary-key">Hauptprodukt</span><span class="side-key">Nebenprodukte</span></div>
 <p class="hint" id="block-method" hidden></p>
+<ol class="block-steps" id="block-steps" hidden></ol>
 <div class="stats">
 <div><strong id="pieces"></strong><span>Stücke</span></div>
 <div><strong id="volume"></strong><span>Schnittholz frisch</span></div>

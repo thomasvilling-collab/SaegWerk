@@ -362,7 +362,8 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
                 leftX += piece.width + kerf;
                 rightX += piece.width + kerf;
             }
-            sideRows.push({pieces: [...left, ...right], besideBlock: true, piecesPerSide: pieces.length});
+            sideRows.push({pieces: [...left, ...right], leftPieces: left, rightPieces: right,
+                besideBlock: true, piecesPerSide: pieces.length});
         }
         else
         {
@@ -377,6 +378,23 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         }
     }
     sideRows.reverse();
+    const faces = {first: [], second: [], oppositeFirst: [], last: []};
+    for (const sideRow of sideRows)
+    {
+        if (sideRow.besideBlock)
+        {
+            faces.second.push(...sideRow.rightPieces);
+            faces.last.push(...sideRow.leftPieces);
+        }
+        else if (sideRow.pieces[0].y + sideRow.pieces[0].height <= -best.blockHeight / 2)
+        {
+            faces.first.push(...sideRow.pieces);
+        }
+        else
+        {
+            faces.oppositeFirst.push(...sideRow.pieces);
+        }
+    }
     const rows = [];
     const firstX = -(best.blockWidth - kerf) / 2;
     const firstY = -(best.blockHeight - kerf) / 2;
@@ -409,7 +427,11 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
         yieldPercent: 100 * timberVolume / logVolume,
         block: {...best, sideMainCount: sidePlan[usable].mainCount,
             sideCount: sidePlan[usable].count - sidePlan[usable].mainCount,
-            flankCount: sidePlan[usable].flankCount, cuts: best.cuts + sideCuts}};
+            flankCount: sidePlan[usable].flankCount,
+            faceCounts: {first: faces.first.length, second: faces.second.length,
+                oppositeFirst: faces.oppositeFirst.length, last: faces.last.length},
+            facePieces: faces,
+            cuts: best.cuts + sideCuts}};
 }
 
 if (typeof module !== "undefined")
