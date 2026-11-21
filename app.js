@@ -180,11 +180,75 @@ function drawPlan(plan, options)
             }
         }
     }
+    if (plan.block && element("show-cut-numbers").checked)
+    {
+        const cutRadius = options.diameter / 2;
+        for (const [index, cut] of plan.block.cutSequence.entries())
+        {
+            let x1;
+            let y1;
+            let x2;
+            let y2;
+            let labelX;
+            let labelY;
+            if (cut.axis === "y")
+            {
+                const half = Math.sqrt(Math.max(0, cutRadius * cutRadius - cut.offset * cut.offset));
+                x1 = -half;
+                x2 = half;
+                y1 = y2 = cut.offset;
+                labelX = -half + 13 / scale;
+                labelY = cut.offset;
+            }
+            else if (cut.axis === "x")
+            {
+                const half = Math.sqrt(Math.max(0, cutRadius * cutRadius - cut.offset * cut.offset));
+                x1 = x2 = cut.offset;
+                y1 = -half;
+                y2 = half;
+                labelX = cut.offset;
+                labelY = -half + 13 / scale;
+            }
+            else
+            {
+                const boardNumber = Number(cut.face.match(/Bohle (\d+)/)?.[1] || 1);
+                const block = plan.block;
+                const centerY = -block.blockHeight / 2 + (boardNumber - 1) *
+                    (block.pieceHeight + options.kerf) + block.pieceHeight / 2;
+                x1 = x2 = cut.offset;
+                y1 = centerY - block.pieceHeight / 2;
+                y2 = centerY + block.pieceHeight / 2;
+                labelX = cut.offset;
+                labelY = centerY;
+            }
+            ctx.beginPath();
+            ctx.setLineDash([5 / scale, 3 / scale]);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.lineWidth = 1.5 / scale;
+            ctx.strokeStyle = "#b03b2e";
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.arc(labelX, labelY, 10 / scale, 0, 2 * Math.PI);
+            ctx.fillStyle = "#fffdf5";
+            ctx.fill();
+            ctx.lineWidth = 1.5 / scale;
+            ctx.strokeStyle = "#9c2f24";
+            ctx.stroke();
+            ctx.fillStyle = "#78251e";
+            ctx.font = "700 " + 10 / scale + "px system-ui";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(String(index + 1), labelX, labelY);
+        }
+    }
 }
 
 function display(plan, options)
 {
     element("result").hidden = false;
+    element("cut-number-control").hidden = !plan.block;
     const blockMethod = element("block-method");
     const blockSteps = element("block-steps");
     const blockFinishing = element("block-finishing");
@@ -358,6 +422,30 @@ for (const side of restored.sides.slice(0, 12))
 }
 updateShrinkageControl();
 updatePriorityHint();
+const cutNumberToggle = element("show-cut-numbers");
+try
+{
+    cutNumberToggle.checked = localStorage.getItem("saegwerk.showCutNumbers.v1") !== "false";
+}
+catch
+{
+    // Keep cut numbers visible if the preference cannot be stored.
+}
+cutNumberToggle.addEventListener("change", () =>
+{
+    try
+    {
+        localStorage.setItem("saegwerk.showCutNumbers.v1", String(cutNumberToggle.checked));
+    }
+    catch
+    {
+        // The preference only controls the drawing.
+    }
+    if (lastPlan)
+    {
+        drawPlan(lastPlan.plan, lastPlan.options);
+    }
+});
 form.noValidate = true;
 calculate(false);
 function showUpdate(worker)
