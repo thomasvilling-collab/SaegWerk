@@ -218,20 +218,20 @@ function drawPlan(plan, options)
             if (cut.axis === "y")
             {
                 const half = Math.sqrt(Math.max(0, cutRadius * cutRadius - cut.offset * cut.offset));
-                x1 = -half;
-                x2 = half;
+                x1 = Math.max(-half, cut.span[0]);
+                x2 = Math.min(half, cut.span[1]);
                 y1 = y2 = cut.offset;
-                labelX = -half + 13 * pixelUnit;
+                labelX = x1 + 13 * pixelUnit;
                 labelY = cut.offset;
             }
             else if (cut.axis === "x")
             {
                 const half = Math.sqrt(Math.max(0, cutRadius * cutRadius - cut.offset * cut.offset));
                 x1 = x2 = cut.offset;
-                y1 = -half;
-                y2 = half;
+                y1 = Math.max(-half, cut.span[0]);
+                y2 = Math.min(half, cut.span[1]);
                 labelX = cut.offset;
-                labelY = -half + 13 * pixelUnit;
+                labelY = y1 + 13 * pixelUnit;
             }
             else
             {
@@ -287,20 +287,21 @@ function display(plan, options)
     blockFinishing.hidden = !plan.block;
     if (plan.block)
     {
-        blockMethod.textContent = "Schnittfolge in der Draufsicht auf den Stammzopf. " +
-            "Zuerst oben und unten ablösen, danach rechts und links sägen. " +
-            "Zuerst möglichst viele Hauptprodukte, danach möglichst viel Seitenware. Die Schnitte folgen in der " +
-            "unten nummerierten Reihenfolge. Gleich große Hauptproduktbohlen werden gemeinsam um 90° gedreht " +
-            "und aufgetrennt. Hauptproduktblock: " + plan.block.blockWidth + " × " +
-            plan.block.blockHeight + " mm; Hauptprodukte außerhalb des Kerns: " + plan.block.sideMainCount +
-            "; Seitenware: " + plan.block.sideCount + ".";
+        blockMethod.textContent = "Vier Flächen nacheinander bearbeiten: oben, rechts, unten, links. " +
+            "Auf Fläche 1 und 2 je höchstens eine Seitenbohle lösen, auf Fläche 3 und 4 je bis zu zwei. " +
+            "Anschließend den Hauptproduktblock in Bohlen sägen und diese um 90° gedreht auftrennen. " +
+            "Hauptproduktblock: " + plan.block.blockWidth + " × " + plan.block.blockHeight +
+            " mm. Stücke aus Seitenware: " + plan.block.sideCount + ".";
         blockSteps.replaceChildren(...plan.block.cutSequence.map((cut) =>
         {
             const item = document.createElement("li");
             const offset = cut.axis === "Bohlenbreite" ?
                 "Bohlenbreite, " + number(cut.offset, 1) + " mm ab Blockmitte" :
                 cut.axis + " = " + number(cut.offset, 1) + " mm ab Stammmitte";
-            item.textContent = cut.face + " — " + cut.operation + " bei " + offset +
+            const turn = cut.quarterTurn ? "Stamm um 90° drehen. " :
+                cut.turnBoards ? "Hauptproduktbohlen um 90° drehen. " :
+                cut.alignCore ? "Block zum Bohlensägen ausrichten. " : "";
+            item.textContent = turn + cut.face + " — " + cut.operation + " bei " + offset +
                 (cut.detail ? ". Schnittmaß: " + cut.detail : ".");
             return item;
         }));
@@ -325,17 +326,19 @@ function display(plan, options)
             const product = options.products[piece.index];
             const label = piece.index ? (product.flexible ? "Brett" : "Nebenprodukt") + " " + piece.index : "Hauptprodukt";
             const finished = options.finishedProducts[piece.index];
-            const width = product.flexible ? Math.floor(piece.width * options.remaining / 1000) : finished.width;
+            const boardWidth = piece.boardWidth ?? piece.width;
+            const width = product.flexible ? Math.floor(boardWidth * options.remaining / 1000) : finished.width;
             const dimensions = width + " × " + finished.height;
-            const cutDimensions = (product.flexible ? piece.width : product.width) + " × " + product.height;
+            const cutDimensions = (product.flexible ? boardWidth : product.width) + " × " + product.height;
             const key = label + " " + dimensions + " " + cutDimensions;
             const group = grouped.get(key) || {label, dimensions, cutDimensions, count: 0, index: piece.index, width};
             group.count++;
             grouped.set(key, group);
-            descriptions.push(label + ", " + piece.width + " × " + piece.height + " mm ab " + number(piece.x, 1) + " mm");
+            descriptions.push(label + ", " + piece.width + " × " + piece.height + " mm ab " +
+                number(piece.x, 1) + " mm" + (plan.block ? " / y " + number(piece.y, 1) + " mm" : ""));
         }
         const item = document.createElement("li");
-        item.textContent = "Von " + number(row[0].y, 1) + " bis " +
+        item.textContent = plan.block ? descriptions.join(" · ") : "Von " + number(row[0].y, 1) + " bis " +
             number(row[0].y + row[0].height, 1) + " mm: " + descriptions.join(" · ");
         rowList.append(item);
     }
@@ -403,7 +406,7 @@ element("size-mode").addEventListener("input", updateShrinkageControl);
 function updatePriorityHint()
 {
     element("priority-hint").textContent = element("priority").value === "block" ?
-        "Wood-Mizer-Arbeitsfolge mit vier Seitenwendungen; der Hauptproduktkern wird vor dem Auftrennen optimiert." :
+        "Wood-Mizer: vier Flächen mit drei 90°-Drehungen. Bei gleicher Anzahl Hauptprodukte entscheidet die Ausbeute der Seitenware." :
         "Beide Varianten verlangen mindestens ein Hauptprodukt.";
 }
 element("priority").addEventListener("input", updatePriorityHint);

@@ -199,304 +199,216 @@ function solveCuts({diameter, middle, length, kerf, reserve, products, priority}
     };
 }
 
-// A two-stage breakdown: first square a rectangular cant, saw it into boards,
-// then turn each board by 90 degrees and rip it into the main products.
+// Wood-Mizer: finish two adjacent faces, then their opposite faces.
 function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
 {
     const usable = diameter - 2 * reserve;
     const radius = usable / 2;
-    const product = products[0];
-    let best = null;
-    for (const [pieceWidth, pieceHeight] of [[product.width, product.height], [product.height, product.width]])
+    const main = products[0];
+    const epsilon = 1e-9;
+    let bestCount = 0;
+    let cores = [];
+    const orientations = main.width === main.height
+        ? [[main.width, main.height]] : [[main.width, main.height], [main.height, main.width]];
+    for (const [pieceWidth, pieceHeight] of orientations)
     {
         for (let boardCount = 1; boardCount * (pieceHeight + kerf) <= usable + kerf; boardCount++)
         {
-            const blockHeight = boardCount * pieceHeight + (boardCount - 1) * kerf;
-            for (let piecesPerBoard = 1; piecesPerBoard * (pieceWidth + kerf) <= usable + kerf; piecesPerBoard++)
+            const blockHeight = boardCount * (pieceHeight + kerf) - kerf;
+            const maxWidth = 2 * Math.sqrt(Math.max(0, radius * radius - (blockHeight / 2) ** 2));
+            const piecesPerBoard = Math.floor((maxWidth + kerf + epsilon) / (pieceWidth + kerf));
+            const count = boardCount * piecesPerBoard;
+            if (!count || count < bestCount)
+                continue;
+            if (count > bestCount)
             {
-                const blockWidth = piecesPerBoard * pieceWidth + (piecesPerBoard - 1) * kerf;
-                if (Math.hypot(blockWidth / 2, blockHeight / 2) > radius + 1e-9)
-                {
-                    continue;
-                }
-                const count = boardCount * piecesPerBoard;
-                // Count the four cuts to square the cant, the board cuts, and
-                // the rip cuts after turning each board.
-                const cuts = 4 + (boardCount - 1) + boardCount * (piecesPerBoard - 1);
-                if (!best || count > best.count || (count === best.count &&
-                    (cuts < best.cuts || (cuts === best.cuts &&
-                        (blockWidth < best.blockWidth || (blockWidth === best.blockWidth && boardCount < best.boardCount))))))
-                {
-                    best = {pieceWidth, pieceHeight, boardCount, piecesPerBoard,
-                        blockWidth, blockHeight, count, cuts};
-                }
+                bestCount = count;
+                cores = [];
             }
+            cores.push({pieceWidth, pieceHeight, boardCount, piecesPerBoard,
+                blockWidth: piecesPerBoard * (pieceWidth + kerf) - kerf, blockHeight, count});
         }
     }
-    if (!best)
-    {
+    if (!cores.length)
         return null;
-    }
-    const sideVariants = products.flatMap((item, index) =>
+
+    const groups = new Map();
+    products.slice(1).forEach((product, offset) =>
     {
-        const straight = {...item, index};
-        return item.flexible || item.width === item.height ? [straight] :
-            [straight, {...straight, width: item.height, height: item.width}];
-    });
-    const sidesByHeight = new Map();
-    for (const variant of sideVariants)
-    {
-        const group = sidesByHeight.get(variant.height) || [];
-        group.push(variant);
-        sidesByHeight.set(variant.height, group);
-    }
-    const maxWidth = usable + kerf;
-    function betterSide(a, b)
-    {
-        return !b || a.mainCount > b.mainCount || (a.mainCount === b.mainCount &&
-            (a.area > b.area || (a.area === b.area && a.count > b.count)));
-    }
-    const sideGroups = Array.from(sidesByHeight, ([height, variants]) =>
-    {
-        const fixed = variants.filter((item) => !item.flexible);
-        const board = variants.filter((item) => item.flexible).sort((a, b) => a.width - b.width)[0];
-        const withoutBoard = [ {area: 0, mainCount: 0, count: 0, used: 0, previous: null} ];
-        for (let width = 1; width <= maxWidth; width++)
+        const item = {...product, index: offset + 1};
+        const variants = item.flexible || item.width === item.height
+            ? [item] : [item, {...item, width: item.height, height: item.width}];
+        for (const variant of variants)
         {
-            withoutBoard[width] = withoutBoard[width - 1];
+            const group = groups.get(variant.height) || [];
+            group.push(variant);
+            groups.set(variant.height, group);
+        }
+    });
+    const maxCapacity = usable + kerf;
+    const sideOptions = Array.from(groups, ([height, variants]) =>
+    {
+        const empty = {width: 0, used: 0, count: 0};
+        const fixed = variants.filter(variant => !variant.flexible);
+        const flexible = variants.filter(variant => variant.flexible).sort((a, b) => a.width - b.width)[0];
+        const packed = [empty];
+        const better = (a, b) => a.width > b.width || (a.width === b.width && a.count < b.count);
+        for (let capacity = 1; capacity <= maxCapacity; capacity++)
+        {
+            packed[capacity] = packed[capacity - 1];
             for (const item of fixed)
             {
-                const remaining = width - item.width - kerf;
-                if (remaining < 0) continue;
-                const prior = withoutBoard[remaining];
-                const next = {area: prior.area + item.width * height,
-                    mainCount: prior.mainCount + Number(item.index === 0), count: prior.count + 1,
-                    used: prior.used + item.width + kerf,
-                    piece: {width: item.width, height, index: item.index}, previous: prior};
-                if (betterSide(next, withoutBoard[width])) withoutBoard[width] = next;
+                const before = packed[capacity - item.width - kerf];
+                if (!before)
+                    continue;
+                const candidate = {width: before.width + item.width, used: before.used + item.width + kerf,
+                    count: before.count + 1, item, before};
+                if (better(candidate, packed[capacity]))
+                    packed[capacity] = candidate;
             }
         }
-        const options = withoutBoard.slice();
-        if (board)
+        if (!flexible)
+            return {height, packed};
+        const filled = packed.slice();
+        let bestPrefix;
+        for (let capacity = flexible.width + kerf; capacity <= maxCapacity; capacity++)
         {
-            let bestPrior = null;
-            let bestScore = null;
-            for (let width = 1; width <= maxWidth; width++)
-            {
-                const prior = withoutBoard[width - board.width - kerf];
-                if (prior)
-                {
-                    const score = prior.area - prior.used * height;
-                    if (!bestPrior || prior.mainCount > bestPrior.mainCount ||
-                        (prior.mainCount === bestPrior.mainCount && score > bestScore.score))
-                    {
-                        bestPrior = prior;
-                        bestScore = {score};
-                    }
-                }
-                if (!bestPrior) continue;
-                const boardWidth = width - bestPrior.used - kerf;
-                if (boardWidth < board.width) continue;
-                const next = {area: bestPrior.area + boardWidth * height,
-                    mainCount: bestPrior.mainCount + Number(board.index === 0), count: bestPrior.count + 1,
-                    used: width, piece: {width: boardWidth, height, index: board.index}, previous: bestPrior};
-                if (betterSide(next, options[width])) options[width] = next;
-            }
+            const before = packed[capacity - flexible.width - kerf];
+            if (!bestPrefix || before.count < bestPrefix.count)
+                bestPrefix = before;
+            const width = capacity - bestPrefix.used - kerf;
+            const candidate = {width: bestPrefix.width + width, used: capacity, count: bestPrefix.count + 1,
+                item: {...flexible, width}, before: bestPrefix};
+            if (better(candidate, filled[capacity]))
+                filled[capacity] = candidate;
         }
-        return {height, options};
+        return {height, packed: filled};
     });
-    function unpack(pattern)
+
+    function boardAt(face, inner, option)
     {
-        const pieces = [];
-        for (let item = pattern; item && item.piece; item = item.previous) pieces.push(item.piece);
-        return pieces.reverse();
+        const outer = inner + option.height;
+        if (outer >= radius)
+            return null;
+        const half = Math.sqrt(radius * radius - outer * outer);
+        const min = Math.max(-half, face.min);
+        const max = Math.min(half, face.max);
+        const capacity = Math.floor(max - min + epsilon);
+        if (capacity <= 0)
+            return null;
+        const pattern = option.packed[capacity + kerf];
+        if (!pattern.count)
+            return null;
+        return {inner, outer, option, pattern, start: (min + max - (pattern.used - kerf)) / 2,
+            area: pattern.width * option.height};
     }
-    const sidePlan = [{area: 0, mainCount: 0, count: 0, previous: null}];
-    const blockTop = radius - best.blockHeight / 2;
-    const blockBottom = radius + best.blockHeight / 2;
-    for (let bottom = 1; bottom <= usable; bottom++)
+
+    function sidePlan(face)
     {
-        sidePlan[bottom] = sidePlan[bottom - 1];
-        for (const group of sideGroups)
+        let best = {boards: [], area: 0, extraCuts: 0};
+        for (const option of sideOptions)
         {
-            const top = bottom - group.height;
-            if (top < 0) continue;
-            const outer = Math.max(Math.abs(top - radius), Math.abs(bottom - radius));
-            const halfWidth = Math.floor(Math.sqrt(Math.max(0, radius * radius - outer * outer)) + 1e-9);
-            const besideBlock = top >= blockTop && bottom <= blockBottom;
-            // The top and bottom faces are cut first, across the full width. A
-            // side piece cannot cross either of those cuts or occupy its kerf.
-            if (!besideBlock && bottom > blockTop - kerf && top < blockBottom + kerf)
-            {
+            const innerBoard = boardAt(face, face.edge + kerf, option);
+            if (!innerBoard)
                 continue;
-            }
-            const slotWidth = besideBlock ? Math.max(0, Math.floor(halfWidth - best.blockWidth / 2 - kerf)) : 2 * halfWidth;
-            if (!slotWidth) continue;
-            // The packing table includes a trailing kerf after its last piece.
-            const pattern = group.options[slotWidth + kerf];
-            if (!pattern || !pattern.count) continue;
-            const rowArea = pattern.area * (besideBlock ? 2 : 1);
-            const previousEnd = Math.max(0, top - kerf);
-            const prior = sidePlan[previousEnd];
-            const next = {area: prior.area + rowArea,
-                mainCount: prior.mainCount + pattern.mainCount * (besideBlock ? 2 : 1),
-                count: prior.count + pattern.count * (besideBlock ? 2 : 1),
-                top, height: group.height, halfWidth, slotWidth, besideBlock, pattern,
-                previous: prior};
-            if (betterSide(next, sidePlan[bottom])) sidePlan[bottom] = next;
-        }
-    }
-    const sideRows = [];
-    for (let current = sidePlan[usable]; current && current.top !== undefined; current = current.previous)
-    {
-        const pieces = unpack(current.pattern);
-        const occupied = current.pattern.used - kerf;
-        const y = current.top - radius;
-        if (current.besideBlock)
-        {
-            const leftStart = -best.blockWidth / 2 - kerf - occupied;
-            let leftX = leftStart;
-            let rightX = best.blockWidth / 2 + kerf;
-            const left = [];
-            const right = [];
-            for (const piece of pieces)
+            const tryBoards = (outerBoard) =>
             {
-                left.push({...piece, x: leftX, y});
-                right.push({...piece, x: rightX, y});
-                leftX += piece.width + kerf;
-                rightX += piece.width + kerf;
-            }
-            sideRows.push({pieces: [...left, ...right], leftPieces: left, rightPieces: right,
-                besideBlock: true, piecesPerSide: pieces.length});
+                const boards = outerBoard ? [outerBoard, innerBoard] : [innerBoard];
+                const area = innerBoard.area + (outerBoard?.area || 0);
+                const extraCuts = boards.reduce((sum, board) => sum + board.pattern.count, 0);
+                if (area > best.area || (area === best.area && extraCuts < best.extraCuts))
+                    best = {boards, area, extraCuts};
+            };
+            tryBoards(null);
+            if (face.limit === 2)
+                for (const outerOption of sideOptions)
+                {
+                    const outerBoard = boardAt(face, innerBoard.outer + kerf, outerOption);
+                    if (outerBoard)
+                        tryBoards(outerBoard);
+                }
         }
-        else
-        {
-            let x = -occupied / 2;
-            const row = [];
-            for (const piece of pieces)
-            {
-                row.push({...piece, x, y});
-                x += piece.width + kerf;
-            }
-            sideRows.push({pieces: row, besideBlock: false, piecesPerSide: row.length});
-        }
+        return best;
     }
-    sideRows.reverse();
-    const faceBoards = {first: [], second: [], oppositeFirst: [], last: []};
-    function addFaceBoard(face, pieces, axis, outer, inner)
+
+    let best;
+    for (const core of cores)
     {
-        faceBoards[face].push({pieces, axis, outer, inner});
+        const x = core.blockWidth / 2;
+        const y = core.blockHeight / 2;
+        const faces = [
+            {name: "Fläche 1 oben", axis: "y", sign: -1, edge: y, min: -diameter / 2, max: diameter / 2, limit: 1},
+            {name: "Fläche 2 rechts", axis: "x", sign: 1, edge: x, min: -y, max: diameter / 2, limit: 1},
+            {name: "Fläche 3 unten", axis: "y", sign: 1, edge: y, min: -diameter / 2, max: x, limit: 2},
+            {name: "Fläche 4 links", axis: "x", sign: -1, edge: x, min: -y, max: y, limit: 2}
+        ].map(face => ({...face, ...sidePlan(face)}));
+        const sideArea = faces.reduce((sum, face) => sum + face.area, 0);
+        const cuts = 4 + core.boardCount - 1 + core.piecesPerBoard - 1 +
+            faces.reduce((sum, face) => sum + face.extraCuts, 0);
+        if (!best || sideArea > best.sideArea || (sideArea === best.sideArea && cuts < best.cuts))
+            best = {...core, faces, sideArea, cuts};
     }
-    for (const sideRow of sideRows)
-    {
-        if (sideRow.besideBlock)
-        {
-            addFaceBoard("second", sideRow.rightPieces, "x",
-                Math.max(...sideRow.rightPieces.map((piece) => piece.x + piece.width)),
-                Math.min(...sideRow.rightPieces.map((piece) => piece.x)));
-            addFaceBoard("last", sideRow.leftPieces, "x",
-                Math.min(...sideRow.leftPieces.map((piece) => piece.x)),
-                Math.max(...sideRow.leftPieces.map((piece) => piece.x + piece.width)));
-        }
-        else if (sideRow.pieces[0].y + sideRow.pieces[0].height <= -best.blockHeight / 2)
-        {
-            addFaceBoard("first", sideRow.pieces, "y",
-                Math.min(...sideRow.pieces.map((piece) => piece.y)),
-                Math.max(...sideRow.pieces.map((piece) => piece.y + piece.height)));
-        }
-        else
-        {
-            addFaceBoard("oppositeFirst", sideRow.pieces, "y",
-                Math.max(...sideRow.pieces.map((piece) => piece.y + piece.height)),
-                Math.min(...sideRow.pieces.map((piece) => piece.y)));
-        }
-    }
+
     const rows = [];
-    const firstX = -best.blockWidth / 2;
-    const firstY = -best.blockHeight / 2;
-    for (let board = 0; board < best.boardCount; board++)
-    {
-        const pieces = [];
-        for (let piece = 0; piece < best.piecesPerBoard; piece++)
-        {
-            pieces.push({width: best.pieceWidth, height: best.pieceHeight, index: 0,
-                x: firstX + piece * (best.pieceWidth + kerf),
-                y: firstY + board * (best.pieceHeight + kerf)});
-        }
-        rows.push(pieces);
-    }
-    rows.push(...sideRows.map((sideRow) => sideRow.pieces));
-    let sideVolume = 0;
-    for (const sideRow of sideRows)
-    {
-        for (const piece of sideRow.pieces)
-        {
-            sideVolume += piece.width * piece.height * length / 1e6;
-        }
-    }
     const cutSequence = [];
-    function addCut(face, operation, axis, offset, detail, extra = {})
+    const addFaceCut = (face, depth, operation, quarterTurn = false) =>
     {
-        const roundedOffset = Math.round(offset * 10) / 10;
-        const existing = cutSequence.find((cut) => cut.face === face && cut.axis === axis &&
-            cut.offset === roundedOffset);
-        if (existing)
-        {
-            if (detail && !existing.detail.includes(detail)) existing.detail += "; " + detail;
-            return;
-        }
-        cutSequence.push({face, operation, axis, offset: roundedOffset, detail: detail || "", ...extra});
-    }
-    const faceDefinitions = [
-        {key: "first", name: "Fläche 1 oben", axis: "y", coreOffset: -best.blockHeight / 2},
-        {key: "oppositeFirst", name: "Fläche 2 unten · gegenüber", axis: "y", coreOffset: best.blockHeight / 2},
-        {key: "second", name: "Fläche 3 rechts", axis: "x", coreOffset: best.blockWidth / 2},
-        {key: "last", name: "Fläche 4 links · gegenüber", axis: "x", coreOffset: -best.blockWidth / 2}
-    ];
-    for (const face of faceDefinitions)
+        cutSequence.push({face: face.name, axis: face.axis, offset: face.sign * depth,
+            span: [face.min, face.max], operation, quarterTurn});
+    };
+    for (const [index, face] of best.faces.entries())
     {
-        const boards = faceBoards[face.key].slice().sort((a, b) => Math.abs(b.outer) - Math.abs(a.outer));
-        if (!boards.length)
+        if (!face.boards.length)
         {
-            addCut(face.name, "Fläche plan sägen und Kernkante herstellen", face.axis, face.coreOffset);
+            addFaceCut(face, face.edge + kerf / 2, "Fläche plan sägen und Blockkante herstellen", index > 0);
             continue;
         }
-        for (const board of boards)
+        addFaceCut(face, face.boards[0].outer + kerf / 2, "Fläche plan sägen", index > 0);
+        for (const board of face.boards)
         {
-            const detail = board.pieces.map((piece) => piece.width + " × " + piece.height + " mm").join(", ");
-            addCut(face.name, "Fläche anlegen", board.axis, board.outer, detail);
-            addCut(face.name, "Seitenware lösen", board.axis, board.inner, detail);
-        }
-        addCut(face.name, "Hauptproduktkern freischneiden", face.axis, face.coreOffset);
-    }
-    for (let board = 1; board < best.boardCount; board++)
-    {
-        const offset = firstY + board * (best.pieceHeight + kerf) - kerf / 2;
-        addCut("Hauptproduktblock", "Bohle " + (board + 1) + " abtrennen", "y", offset,
-            best.pieceWidth + " × " + best.pieceHeight + " mm");
-    }
-    if (best.piecesPerBoard > 1)
-    {
-        const boardDescription = best.boardCount > 1 ?
-            "Bohlen 1–" + best.boardCount + " gemeinsam um 90° gedreht" :
-            "Bohle 1 um 90° gedreht";
-        for (let piece = 1; piece < best.piecesPerBoard; piece++)
-        {
-            const offset = firstX + piece * (best.pieceWidth + kerf) - kerf / 2;
-            addCut("Hauptproduktblock · " + boardDescription,
-                best.boardCount > 1 ? "Hauptprodukte gemeinsam auftrennen" : "Hauptprodukte auftrennen", "Bohlenbreite", offset,
-                best.pieceWidth + " × " + best.pieceHeight + " mm je Bohle; " + best.boardCount + " gleiche Bohlen",
-                {boardRange: [1, best.boardCount]});
+            const pieces = [];
+            let axisPosition = board.start;
+            const normalPosition = face.sign < 0 ? -board.outer : board.inner;
+            for (let entry = board.pattern; entry.item; entry = entry.before)
+            {
+                const {width, height, index: productIndex} = entry.item;
+                const common = {index: productIndex, boardWidth: width, boardThickness: height};
+                pieces.push(face.axis === "y"
+                    ? {...common, x: axisPosition, y: normalPosition, width, height}
+                    : {...common, x: normalPosition, y: axisPosition, width: height, height: width});
+                axisPosition += width + kerf;
+            }
+            rows.push(pieces);
+            addFaceCut(face, board.inner - kerf / 2,
+                "Seitenbohle lösen (" + board.option.height + " mm stark)");
         }
     }
-    const timberVolume = best.count * product.width * product.height * length / 1e6 + sideVolume;
+    const x = -best.blockWidth / 2;
+    const y = -best.blockHeight / 2;
+    for (let board = 0; board < best.boardCount; board++)
+    {
+        const row = [];
+        for (let piece = 0; piece < best.piecesPerBoard; piece++)
+            row.push({width: best.pieceWidth, height: best.pieceHeight, index: 0,
+                x: x + piece * (best.pieceWidth + kerf), y: y + board * (best.pieceHeight + kerf)});
+        rows.push(row);
+        if (board > 0)
+            cutSequence.push({face: "Hauptproduktblock", operation: "Bohle " + (board + 1) + " abtrennen",
+                axis: "y", offset: row[0].y - kerf / 2, span: [x, -x], alignCore: board === 1});
+    }
+    for (let piece = 1; piece < best.piecesPerBoard; piece++)
+        cutSequence.push({face: "Hauptproduktbohlen", operation: "Bohlen auftrennen", axis: "Bohlenbreite",
+            offset: x + piece * (best.pieceWidth + kerf) - kerf / 2,
+            boardRange: [1, best.boardCount], turnBoards: piece === 1});
+
+    const timberVolume = (best.count * main.width * main.height + best.sideArea) * length / 1e6;
     const logVolume = Math.PI * (middle / 2000) ** 2 * length;
-    return {rows, timberVolume, logVolume, count: best.count + sidePlan[usable].count,
-        mainCount: best.count + sidePlan[usable].mainCount,
-        yieldPercent: 100 * timberVolume / logVolume,
-        block: {...best, sideMainCount: sidePlan[usable].mainCount,
-            sideCount: sidePlan[usable].count - sidePlan[usable].mainCount,
-            cuts: cutSequence.length, cutSequence}};
+    const count = rows.reduce((sum, row) => sum + row.length, 0);
+    return {rows, timberVolume, logVolume, count, mainCount: best.count,
+        yieldPercent: 100 * timberVolume / logVolume, block: {
+            pieceWidth: best.pieceWidth, pieceHeight: best.pieceHeight, boardCount: best.boardCount,
+            piecesPerBoard: best.piecesPerBoard, blockWidth: best.blockWidth, blockHeight: best.blockHeight,
+            sideCount: count - best.count, cutSequence}};
 }
 
 if (typeof module !== "undefined")

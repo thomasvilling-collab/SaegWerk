@@ -1,6 +1,6 @@
 "use strict";
 
-const cacheName = "saegwerk-offline-v14";
+const cacheName = "saegwerk-offline-v15";
 const assets = ["./index.html", "./style.css", "./solver.js", "./app.js", "./schnittware.js", "./manifest.webmanifest",
     "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 const scope = self.registration.scope;
