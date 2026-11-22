@@ -287,7 +287,8 @@ function display(plan, options)
     blockFinishing.hidden = !plan.block;
     if (plan.block)
     {
-        blockMethod.textContent = "Schnittfolge in der Draufsicht auf den Stammzopf; die erste Fläche liegt oben. " +
+        blockMethod.textContent = "Schnittfolge in der Draufsicht auf den Stammzopf. " +
+            "Zuerst oben und unten ablösen, danach rechts und links sägen. " +
             "Zuerst möglichst viele Hauptprodukte, danach möglichst viel Seitenware. Die Schnitte folgen in der " +
             "unten nummerierten Reihenfolge. Gleich große Hauptproduktbohlen werden gemeinsam um 90° gedreht " +
             "und aufgetrennt. Hauptproduktblock: " + plan.block.blockWidth + " × " +

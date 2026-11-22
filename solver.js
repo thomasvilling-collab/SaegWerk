@@ -323,10 +323,17 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
             if (top < 0) continue;
             const outer = Math.max(Math.abs(top - radius), Math.abs(bottom - radius));
             const halfWidth = Math.floor(Math.sqrt(Math.max(0, radius * radius - outer * outer)) + 1e-9);
-            const besideBlock = top < blockBottom + kerf && bottom > blockTop - kerf;
+            const besideBlock = top >= blockTop && bottom <= blockBottom;
+            // The top and bottom faces are cut first, across the full width. A
+            // side piece cannot cross either of those cuts or occupy its kerf.
+            if (!besideBlock && bottom > blockTop - kerf && top < blockBottom + kerf)
+            {
+                continue;
+            }
             const slotWidth = besideBlock ? Math.max(0, Math.floor(halfWidth - best.blockWidth / 2 - kerf)) : 2 * halfWidth;
             if (!slotWidth) continue;
-            const pattern = group.options[slotWidth];
+            // The packing table includes a trailing kerf after its last piece.
+            const pattern = group.options[slotWidth + kerf];
             if (!pattern || !pattern.count) continue;
             const rowArea = pattern.area * (besideBlock ? 2 : 1);
             const previousEnd = Math.max(0, top - kerf);
@@ -442,9 +449,9 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
     }
     const faceDefinitions = [
         {key: "first", name: "Fläche 1 oben", axis: "y", coreOffset: -best.blockHeight / 2},
-        {key: "second", name: "Fläche 2 rechts · nach 90° Wende", axis: "x", coreOffset: best.blockWidth / 2},
-        {key: "oppositeFirst", name: "Fläche 3 gegenüber · nach 90° Wende", axis: "y", coreOffset: best.blockHeight / 2},
-        {key: "last", name: "Fläche 4 links · nach 90° Wende", axis: "x", coreOffset: -best.blockWidth / 2}
+        {key: "oppositeFirst", name: "Fläche 2 unten · gegenüber", axis: "y", coreOffset: best.blockHeight / 2},
+        {key: "second", name: "Fläche 3 rechts", axis: "x", coreOffset: best.blockWidth / 2},
+        {key: "last", name: "Fläche 4 links · gegenüber", axis: "x", coreOffset: -best.blockWidth / 2}
     ];
     for (const face of faceDefinitions)
     {

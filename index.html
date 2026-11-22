@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <script src="solver.js" defer></script>
 <script src="app.js" defer></script>
+<script src="schnittware.js" defer></script>
 </head>
 <body>
 <header><div class="header"><span class="mark" aria-hidden="true">SW</span><strong>SägWerk</strong></div></header>
@@ -82,7 +83,38 @@
 <details><summary>Schnittreihen und Abstände</summary><p class="hint">Abstände ab Stammmitte. Negative Werte liegen links bzw. oberhalb der Mitte. Reihen von oben nach unten.</p><ol id="row-list"></ol></details>
 <details><summary>Grundlage der Berechnung</summary><p>Gerader Stamm, runder Zopf, rechteckige Schnitte ohne Waldkante. SägWerk optimiert waagerechte Schnittreihen im Millimeterraster. Alle Stücke laufen über die volle Stammlänge. Die Volumenausbeute vergleicht das frische Schnittholz mit dem aus dem Mitteldurchmesser geschätzten Stammvolumen. Die Grafik und Schnittpositionen zeigen die Maße beim Einschnitt.</p></details>
 </section>
+<section class="card" aria-labelledby="actual-heading">
+<h2 id="actual-heading">Tatsächliche Schnittware</h2>
+<p class="hint">Lade die Schnittcharge aus BelegWerk und erfasse die wirklich geschnittenen Maße.</p>
+<label>Schnittcharge laden <input id="cut-batch-file" type="file" accept=".json,application/json"></label>
+<p id="cut-batch-name"></p>
+<fieldset id="cut-stems" hidden><legend>Stämme dieses Einschnitts</legend></fieldset>
+<form id="actual-cut-form" hidden>
+<div id="actual-cut-rows"></div>
+<button type="button" class="secondary" id="add-actual-cut">Maßgruppe hinzufügen</button>
+<p id="actual-cut-volume"></p>
+<button type="submit">Schnittware bestätigen</button>
+</form>
+<section id="cut-transfer" hidden>
+<button type="button" class="secondary" id="cut-download">Ergebnis als JSON sichern</button>
+<label>WLAN-Adresse aus BelegWerk <input id="cut-lan-address" type="url" autocomplete="off" placeholder="http://192.168.…"></label>
+<button type="button" id="cut-send">Ergebnis per WLAN senden</button>
+</section>
+<p id="cut-status" role="status"></p>
+</section>
 </main>
+<template id="actual-cut-template">
+<fieldset class="side">
+<legend>Maßgruppe</legend>
+<div class="fields">
+<label>Stück <input name="pieces" type="number" inputmode="numeric" min="1" max="100000" required></label>
+<label>Dicke (mm) <input name="thicknessMm" type="number" inputmode="numeric" min="1" max="10000" required></label>
+<label>Breite (mm) <input name="widthMm" type="number" inputmode="numeric" min="1" max="10000" required></label>
+<label>Länge (mm) <input name="lengthMm" type="number" inputmode="numeric" min="1" max="100000" required></label>
+</div>
+<button type="button" class="secondary" data-remove>Entfernen</button>
+</fieldset>
+</template>
 <template id="side-template">
 <fieldset class="side">
 <legend>Nebenprodukt</legend>
