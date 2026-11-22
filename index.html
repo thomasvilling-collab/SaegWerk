@@ -69,9 +69,12 @@
 <canvas id="diagram" width="720" height="720" role="img" aria-label="Schnittplan am Zopf. Die Maße und Positionen stehen unter der Grafik."></canvas>
 <label class="diagram-toggle" id="cut-number-control" hidden><input type="checkbox" id="show-cut-numbers" checked> Schnittnummern in der Grafik zeigen</label>
 <div class="legend"><span class="primary-key">Hauptprodukt</span><span class="side-key">Nebenprodukte</span></div>
-<p class="hint" id="block-method" hidden></p>
-<ol class="block-steps" id="block-steps" hidden></ol>
-<p class="hint" id="block-finishing" hidden></p>
+<details id="block-description" open hidden>
+<summary>Schnittbeschreibung</summary>
+<p class="hint" id="block-method"></p>
+<ol class="block-steps" id="block-steps"></ol>
+<p class="hint" id="block-finishing"></p>
+</details>
 <div class="stats">
 <div><strong id="pieces"></strong><span>Stücke</span></div>
 <div><strong id="volume"></strong><span>Schnittholz frisch</span></div>

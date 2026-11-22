@@ -282,9 +282,7 @@ function display(plan, options)
     const blockMethod = element("block-method");
     const blockSteps = element("block-steps");
     const blockFinishing = element("block-finishing");
-    blockMethod.hidden = !plan.block;
-    blockSteps.hidden = !plan.block;
-    blockFinishing.hidden = !plan.block;
+    element("block-description").hidden = !plan.block;
     if (plan.block)
     {
         blockMethod.textContent = "Vier Flächen nacheinander bearbeiten: oben, rechts, unten, links. " +
@@ -301,8 +299,11 @@ function display(plan, options)
             const turn = cut.quarterTurn ? "Stamm um 90° drehen. " :
                 cut.turnBoards ? "Hauptproduktbohlen um 90° drehen. " :
                 cut.alignCore ? "Block zum Bohlensägen ausrichten. " : "";
+            const opening = cut.openingMeasures;
+            const measures = opening ? " Schnittbreite: " + number(opening.widthMm, 1) +
+                " mm · Segmenthöhe: " + number(opening.segmentHeightMm, 1) + " mm." : "";
             item.textContent = turn + cut.face + " — " + cut.operation + " bei " + offset +
-                (cut.detail ? ". Schnittmaß: " + cut.detail : ".");
+                (cut.detail ? ". Schnittmaß: " + cut.detail : ".") + measures;
             return item;
         }));
         blockFinishing.textContent = "Nachbearbeitung, nicht nummeriert: Seitenware auf die endgültigen Breiten und Stärken auftrennen.";

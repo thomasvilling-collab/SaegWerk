@@ -351,19 +351,30 @@ function solveBlockCuts({diameter, middle, length, kerf, reserve, products})
 
     const rows = [];
     const cutSequence = [];
-    const addFaceCut = (face, depth, operation, quarterTurn = false) =>
+    const addFaceCut = (face, depth, operation, {quarterTurn = false, opening = false} = {}) =>
     {
-        cutSequence.push({face: face.name, axis: face.axis, offset: face.sign * depth,
-            span: [face.min, face.max], operation, quarterTurn});
+        const cut = {face: face.name, axis: face.axis, offset: face.sign * depth,
+            span: [face.min, face.max], operation, quarterTurn};
+        if (opening)
+        {
+            const logRadius = diameter / 2;
+            const halfChord = Math.sqrt(Math.max(0, logRadius ** 2 - depth ** 2));
+            cut.openingMeasures = {
+                widthMm: Math.max(0, Math.min(halfChord, face.max) - Math.max(-halfChord, face.min)),
+                segmentHeightMm: Math.max(0, logRadius - depth)
+            };
+        }
+        cutSequence.push(cut);
     };
     for (const [index, face] of best.faces.entries())
     {
+        const openingCut = {quarterTurn: index > 0, opening: index < 2};
         if (!face.boards.length)
         {
-            addFaceCut(face, face.edge + kerf / 2, "Fläche plan sägen und Blockkante herstellen", index > 0);
+            addFaceCut(face, face.edge + kerf / 2, "Fläche plan sägen und Blockkante herstellen", openingCut);
             continue;
         }
-        addFaceCut(face, face.boards[0].outer + kerf / 2, "Fläche plan sägen", index > 0);
+        addFaceCut(face, face.boards[0].outer + kerf / 2, "Fläche plan sägen", openingCut);
         for (const board of face.boards)
         {
             const pieces = [];
